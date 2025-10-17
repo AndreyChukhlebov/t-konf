@@ -1,0 +1,32 @@
+# Используем multi-arch образ
+FROM eclipse-temurin:21-jre-jammy
+
+# Или альтернативы:
+# FROM eclipse-temurin:17-jre
+# FROM openjdk:17-jre-slim
+# FROM amazoncorretto:17-alpine-jdk
+
+# Создаем пользователя
+RUN groupadd -r -g 185 app && \
+    useradd -r -u 185 -g app app
+
+WORKDIR /deployments
+
+# Копируем файлы приложения (через assembly)
+COPY --chown=185:185 maven/deployments/ /deployments/
+
+# Копируем entrypoint скрипт
+COPY --chown=185:185 maven/entrypoint.sh /entrypoint.sh
+
+# Делаем скрипт исполняемым
+RUN chmod +x /entrypoint.sh
+
+USER 185
+
+EXPOSE 8080
+
+# Переменные окружения по умолчанию
+ENV JAVA_OPTS="-Dquarkus.http.host=0.0.0.0"
+
+# Используем entrypoint скрипт
+ENTRYPOINT ["/entrypoint.sh"]
