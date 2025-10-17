@@ -201,9 +201,6 @@ public class DockerIT {
         assertNotNull(response.body());
         assertFalse(response.body().isEmpty());
 
-        // Логируем ответ для отладки
-        System.out.println("Error response body: " + response.body());
-
         // Проверяем что в ответе есть упоминание об ошибке (может быть в разных форматах)
         assertTrue(response.body().toLowerCase().contains("error") ||
                 response.body().toLowerCase().contains("unable") ||
