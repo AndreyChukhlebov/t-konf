@@ -43,11 +43,19 @@
             <artifactId>micronaut-serde-jackson</artifactId>
             <scope>compile</scope>
         </dependency>
+
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.0</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>io.micronaut</groupId>
             <artifactId>micronaut-http-client</artifactId>
@@ -189,8 +197,7 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <includes>
-                                <include>**/DockerIT.java</include>
-                                <include>**/*Docker*Test.java</include>
+                                <include>**/*IT.java</include>
                             </includes>
                         </configuration>
                     </plugin>

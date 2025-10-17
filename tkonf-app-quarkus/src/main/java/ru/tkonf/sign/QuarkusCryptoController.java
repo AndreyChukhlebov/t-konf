@@ -21,7 +21,6 @@ public class QuarkusCryptoController {
     @Path("/sign")
     public Response signMessage(SignatureRequest request) {
         try {
-            System.out.println("Received sign request: " + request.getMessage());
 
             String signature = signatureService.signMessage(request.getMessage());
             SignedMessage signedMessage = new SignedMessage(
@@ -43,7 +42,6 @@ public class QuarkusCryptoController {
     @Path("/verify")
     public Response verifySignature(VerificationRequest request) {
         try {
-            System.out.println("Received verify request: " + request.getMessage());
 
             boolean isValid = signatureService.verifySignature(request.getMessage(), request.getSignature());
             String message = isValid ? "Signature is VALID" : "Signature is INVALID";
@@ -60,7 +58,6 @@ public class QuarkusCryptoController {
     @Path("/encrypt")
     public Response encryptMessage(SignatureRequest request) {
         try {
-            System.out.println("Received encrypt request: " + request.getMessage());
 
             String encrypted = signatureService.encrypt(request.getMessage());
             return Response.ok(new CryptoResponse(encrypted)).build();
@@ -76,7 +73,6 @@ public class QuarkusCryptoController {
     @Path("/decrypt")
     public Response decryptMessage(SignatureRequest request) {
         try {
-            System.out.println("Received decrypt request: " + request.getMessage());
 
             String decrypted = signatureService.decrypt(request.getMessage());
             return Response.ok(new CryptoResponse(decrypted)).build();

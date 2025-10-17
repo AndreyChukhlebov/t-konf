@@ -13,7 +13,6 @@
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.28.3</quarkus.platform.version>
-        <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.4</surefire-plugin.version>
 
         <docker.image.name>quarkus-crypto-service</docker.image.name>
@@ -129,8 +128,7 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <includes>
-                                <include>**/DockerIT.java</include>
-                                <include>**/*Docker*Test.java</include>
+                                <include>**/*IT.java</include>
                             </includes>
                         </configuration>
                     </plugin>

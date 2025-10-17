@@ -19,7 +19,6 @@ public class SpringCryptoController {
     @PostMapping("/sign")
     public ResponseEntity<?> signMessage(@RequestBody SignatureRequest request) {
         try {
-            System.out.println("Received sign request: " + request.getMessage());
 
             String signature = signatureService.signMessage(request.getMessage());
             SignedMessage signedMessage = new SignedMessage(
@@ -39,7 +38,6 @@ public class SpringCryptoController {
     @PostMapping("/verify")
     public ResponseEntity<?> verifySignature(@RequestBody VerificationRequest request) {
         try {
-            System.out.println("Received verify request: " + request.getMessage());
 
             boolean isValid = signatureService.verifySignature(request.getMessage(), request.getSignature());
             String message = isValid ? "Signature is VALID" : "Signature is INVALID";
@@ -54,7 +52,6 @@ public class SpringCryptoController {
     @PostMapping("/encrypt")
     public ResponseEntity<?> encryptMessage(@RequestBody SignatureRequest request) {
         try {
-            System.out.println("Received encrypt request: " + request.getMessage());
 
             String encrypted = signatureService.encrypt(request.getMessage());
             return ResponseEntity.ok(new CryptoResponse(encrypted));
@@ -68,7 +65,6 @@ public class SpringCryptoController {
     @PostMapping("/decrypt")
     public ResponseEntity<?> decryptMessage(@RequestBody SignatureRequest request) {
         try {
-            System.out.println("Received decrypt request: " + request.getMessage());
 
             String decrypted = signatureService.decrypt(request.getMessage());
             return ResponseEntity.ok(new CryptoResponse(decrypted));

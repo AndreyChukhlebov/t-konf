@@ -126,8 +126,7 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <configuration>
                             <includes>
-                                <include>**/DockerIT.java</include>
-                                <include>**/*Docker*Test.java</include>
+                                <include>**/*IT.java</include>
                             </includes>
                         </configuration>
                     </plugin>
