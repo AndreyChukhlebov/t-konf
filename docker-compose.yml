@@ -3,23 +3,23 @@ version: '3.8'
 services:
   # Приложение
   app:
-#    image: spring-crypto-service:0.0.1-SNAPSHOT
-    image: micronaut-crypto-service:0.0.2-SNAPSHOT
+    image: spring-crypto-service:0.0.1-SNAPSHOT
+#    image: micronaut-crypto-service:0.0.2-SNAPSHOT
 #    image: quarkus-crypto-service:0.0.1-SNAPSHOT
     volumes:
       - ./jfr:/tmp      # ← Volume для логов
     deploy:
       resources:
         limits:
-          cpus: '0.05'    # Максимум 0.5 CPU
+          cpus: '0.2'    # Максимум 0.5 CPU
           memory: 512M
         reservations:
-          cpus: '0.05'    # Минимум 0.1 CPU
+          cpus: '0.2'    # Минимум 0.1 CPU
           memory: 512M
     ports:
       - "8080:8080"  # ← Приложение на порту 8080
     environment:
-#      - JAVA_OPTS=-Dserver.address=0.0.0.0 -DspringAot=true -Dspring.aot.enabled=true --add-opens java.base/java.lang=ALL-UNNAMED -Dspring.spel.ignore=true -Dspring.xml.ignore=true
+      - JAVA_OPTS=-Dserver.address=0.0.0.0 -DspringAot=true -Dspring.aot.enabled=true --add-opens java.base/java.lang=ALL-UNNAMED -Dspring.spel.ignore=true -Dspring.xml.ignore=true
       - PORT=8080    # ← Порт приложения
     networks:
       - app-network
@@ -32,7 +32,11 @@ services:
       - "9901:9901"      # Admin interface
     volumes:
       - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml
-      - ./logs:/tmp      # ← Volume для логов
+      - ./envoy/start_envoy.sh:/start_envoy.sh
+      - ./logs:/tmp
+    command: [ "sh", "/start_envoy.sh" ]    # ← Volume для логов
+    environment:
+      - SERVICE=spring
     depends_on:
       - app
     networks:
