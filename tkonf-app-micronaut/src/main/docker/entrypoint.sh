@@ -19,4 +19,4 @@ fi
 echo "Starting application with Java options: $JAVA_OPTS"
 
 # Start the application
-exec java $JAVA_OPTS -jar /deployments/tkonf-app-micronaut-0.0.1-SNAPSHOT.jar
+exec java $JAVA_OPTS -jar /deployments/tkonf-app-micronaut-0.0.2-SNAPSHOT.jar
