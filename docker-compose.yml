@@ -5,21 +5,23 @@ services:
   app:
 #    image: spring-crypto-service:0.0.1-SNAPSHOT
 #    image: micronaut-crypto-service:0.0.2-SNAPSHOT
-    image: quarkus-crypto-service:0.0.1-SNAPSHOT
+    image: ${IMAGE_ENV}
     volumes:
-      - ./jfr:/tmp      # ← Volume для логов
+      - ./jfr/${TEST_NUMBER_ENV}/spring/:/tmp/${TEST_NUMBER_ENV}/spring      # ← Volume для логов
+      - ./jfr/${TEST_NUMBER_ENV}/quarkus:/tmp/${TEST_NUMBER_ENV}/quarkus      # ← Volume для логов
+      - ./jfr/${TEST_NUMBER_ENV}/micronaut:/tmp/${TEST_NUMBER_ENV}/micronaut
     deploy:
       resources:
         limits:
-          cpus: '0.3'    # Максимум 0.5 CPU
+          cpus: '0.6'    # Максимум 0.5 CPU
           memory: 512M
         reservations:
-          cpus: '0.3'    # Минимум 0.1 CPU
+          cpus: '0.6'    # Минимум 0.1 CPU
           memory: 512M
     ports:
       - "8080:8080"  # ← Приложение на порту 8080
     environment:
-#      - JAVA_OPTS=-Dserver.address=0.0.0.0 --add-opens java.base/java.lang=ALL-UNNAMED -Dspring.spel.ignore=true -Dspring.xml.ignore=true
+      - JAVA_OPTS=${JAVA_OPTS_ENV} ${JAVA_OPTS_ALL_ENV}
       - PORT=8080    # ← Порт приложения
     networks:
       - app-network
@@ -46,8 +48,17 @@ services:
     build:
       context: lt-test
       dockerfile: Dockerfile
+    volumes:
+      - ./results:/results  # Монтируем папку для результатов
     depends_on:
       - envoy
+    environment:
+      - TEST_DURATION=${TEST_DURATION_ENV}
+      - TARGET_URL=${TARGET_URL_ENV}
+      - HEALTH_URL=${HEALTH_URL_ENV}
+      - REQUESTS_PER_SECOND=${REQUESTS_PER_SECOND_ENV}
+      - SERVICE=${SERVICE}
+      - TEST_NUMBER_ENV=${TEST_NUMBER_ENV}
     networks:
       - app-network
 

@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,13 +37,53 @@ type LoadTestStats struct {
 	MaxResponseTime  time.Duration
 	ResponseTimes    []time.Duration
 	Mutex            sync.Mutex
+	ProgressFile     *os.File
+	SummaryFile      *os.File
 }
 
-func NewLoadTestStats() *LoadTestStats {
+func NewLoadTestStats(progressFilename, summaryFilename string) *LoadTestStats {
+	// Создаем директорию если её нет
+	os.MkdirAll(filepath.Dir(progressFilename), 0755)
+	os.MkdirAll(filepath.Dir(summaryFilename), 0755)
+
+	// Открываем файл для записи прогресса (добавляем в конец)
+	progressFile, err := os.OpenFile(progressFilename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("Warning: failed to open progress file: %v", err)
+		progressFile = nil
+	}
+
+	// Открываем файл для итоговой статистики
+	summaryFile, err := os.OpenFile(summaryFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Printf("Warning: failed to open summary file: %v", err)
+		summaryFile = nil
+	}
+
 	return &LoadTestStats{
-		MinResponseTime: time.Hour, // Инициализируем большим значением
+		MinResponseTime: time.Hour,
 		MaxResponseTime: 0,
 		ResponseTimes:   make([]time.Duration, 0),
+		ProgressFile:    progressFile,
+		SummaryFile:     summaryFile,
+	}
+}
+
+func (s *LoadTestStats) CloseFiles() {
+	if s.ProgressFile != nil {
+		s.ProgressFile.Close()
+	}
+	if s.SummaryFile != nil {
+		s.SummaryFile.Close()
+	}
+}
+
+func (s *LoadTestStats) WriteProgressLine(line string) {
+	if s.ProgressFile != nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		fullLine := fmt.Sprintf("[%s] %s\n", timestamp, line)
+		s.ProgressFile.WriteString(fullLine)
+		s.ProgressFile.Sync() // Сбрасываем буфер на диск
 	}
 }
 
@@ -85,15 +128,48 @@ func (s *LoadTestStats) CalculatePercentiles() (p50, p95, p99 time.Duration) {
 	return p50, p95, p99
 }
 
-func (s *LoadTestStats) PrintSummary() {
+// Структура для JSON вывода итоговой статистики
+type TestSummary struct {
+	TotalRequests    int64   `json:"total_requests"`
+	SuccessRequests  int64   `json:"success_requests"`
+	FailedRequests   int64   `json:"failed_requests"`
+	SuccessRate      float64 `json:"success_rate"`
+	AverageDuration  string  `json:"average_duration"`
+	MinDuration      string  `json:"min_duration"`
+	MaxDuration      string  `json:"max_duration"`
+	Percentile50     string  `json:"p50_duration"`
+	Percentile95     string  `json:"p95_duration"`
+	Percentile99     string  `json:"p99_duration"`
+	TestDuration     string  `json:"test_duration"`
+	RequestsPerSecond int    `json:"requests_per_second"`
+	Timestamp        string  `json:"timestamp"`
+	TestConfig       struct {
+		TargetURL   string `json:"target_url"`
+		HealthURL   string `json:"health_url"`
+		Service     string `json:"service"`
+		TestNumber  string `json:"test_number"`
+	} `json:"test_config"`
+}
+
+func (s *LoadTestStats) SaveSummaryToJSON(filename string, testDuration time.Duration, rps int, targetURL, healthURL, service, testNumber string) error {
 	total := atomic.LoadInt64(&s.TotalRequests)
 	success := atomic.LoadInt64(&s.SuccessRequests)
 	failed := atomic.LoadInt64(&s.FailedRequests)
 
-	fmt.Println("\n=== Load Test Summary ===")
-	fmt.Printf("Total requests: %d\n", total)
-	fmt.Printf("Successful: %d\n", success)
-	fmt.Printf("Failed: %d\n", failed)
+	summary := TestSummary{
+		TotalRequests:    total,
+		SuccessRequests:  success,
+		FailedRequests:   failed,
+		RequestsPerSecond: rps,
+		TestDuration:     testDuration.String(),
+		Timestamp:        time.Now().Format(time.RFC3339),
+	}
+
+	// Добавляем конфигурацию теста
+	summary.TestConfig.TargetURL = targetURL
+	summary.TestConfig.HealthURL = healthURL
+	summary.TestConfig.Service = service
+	summary.TestConfig.TestNumber = testNumber
 
 	if success > 0 {
 		s.Mutex.Lock()
@@ -102,14 +178,61 @@ func (s *LoadTestStats) PrintSummary() {
 
 		p50, p95, p99 := s.CalculatePercentiles()
 
-		fmt.Printf("Average response time: %v\n", avgDuration)
-		fmt.Printf("Min response time: %v\n", s.MinResponseTime)
-		fmt.Printf("Max response time: %v\n", s.MaxResponseTime)
-		fmt.Printf("50th percentile: %v\n", p50)
-		fmt.Printf("95th percentile: %v\n", p95)
-		fmt.Printf("99th percentile: %v\n", p99)
-		fmt.Printf("Success rate: %.2f%%\n", float64(success)/float64(total)*100)
+		summary.SuccessRate = float64(success)/float64(total)*100
+		summary.AverageDuration = avgDuration.String()
+		summary.MinDuration = s.MinResponseTime.String()
+		summary.MaxDuration = s.MaxResponseTime.String()
+		summary.Percentile50 = p50.String()
+		summary.Percentile95 = p95.String()
+		summary.Percentile99 = p99.String()
 	}
+
+	// Создаем директорию если её нет
+	os.MkdirAll(filepath.Dir(filename), 0755)
+
+	// Создаем JSON с красивым форматированием
+	jsonData, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %v", err)
+	}
+
+	// Сохраняем в файл
+	err = os.WriteFile(filename, jsonData, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write file: %v", err)
+	}
+
+	return nil
+}
+
+func (s *LoadTestStats) PrintSummary() {
+	total := atomic.LoadInt64(&s.TotalRequests)
+	success := atomic.LoadInt64(&s.SuccessRequests)
+	failed := atomic.LoadInt64(&s.FailedRequests)
+
+	summaryText := "\n=== Load Test Summary ===\n"
+	summaryText += fmt.Sprintf("Total requests: %d\n", total)
+	summaryText += fmt.Sprintf("Successful: %d\n", success)
+	summaryText += fmt.Sprintf("Failed: %d\n", failed)
+
+	if success > 0 {
+		s.Mutex.Lock()
+		avgDuration := s.TotalDuration / time.Duration(success)
+		s.Mutex.Unlock()
+
+		p50, p95, p99 := s.CalculatePercentiles()
+
+		summaryText += fmt.Sprintf("Average response time: %v\n", avgDuration)
+		summaryText += fmt.Sprintf("Min response time: %v\n", s.MinResponseTime)
+		summaryText += fmt.Sprintf("Max response time: %v\n", s.MaxResponseTime)
+		summaryText += fmt.Sprintf("50th percentile: %v\n", p50)
+		summaryText += fmt.Sprintf("95th percentile: %v\n", p95)
+		summaryText += fmt.Sprintf("99th percentile: %v\n", p99)
+		summaryText += fmt.Sprintf("Success rate: %.2f%%\n", float64(success)/float64(total)*100)
+	}
+
+	// Выводим в консоль
+	fmt.Print(summaryText)
 }
 
 func (s *LoadTestStats) PrintProgress() {
@@ -117,18 +240,23 @@ func (s *LoadTestStats) PrintProgress() {
 	success := atomic.LoadInt64(&s.SuccessRequests)
 	failed := atomic.LoadInt64(&s.FailedRequests)
 
+	var progressLine string
+
 	if success > 0 {
 		p50, p95, p99 := s.CalculatePercentiles()
 
-		fmt.Printf("[%s] Req: %d | OK: %d | ERR: %d | P50: %v | P95: %v | P99: %v\n",
-			time.Now().Format("15:04:05.000"),
-			total, success, failed,
-			p50, p95, p99)
+		progressLine = fmt.Sprintf("Req: %d | OK: %d | ERR: %d | P50: %v | P95: %v | P99: %v",
+			total, success, failed, p50, p95, p99)
 	} else {
-		fmt.Printf("[%s] Req: %d | OK: %d | ERR: %d\n",
-			time.Now().Format("15:04:05.000"),
+		progressLine = fmt.Sprintf("Req: %d | OK: %d | ERR: %d",
 			total, success, failed)
 	}
+
+	// Выводим в консоль
+	fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05.000"), progressLine)
+
+	// Записываем в файл прогресса
+	s.WriteProgressLine(progressLine)
 }
 
 func sendEncryptRequest(client *http.Client, url string, message string) error {
@@ -165,8 +293,10 @@ func sendEncryptRequest(client *http.Client, url string, message string) error {
 	return nil
 }
 
-func waitForService(client *http.Client, healthURL string, timeout time.Duration) error {
-	fmt.Printf("Waiting for service to be available at %s...\n", healthURL)
+func waitForService(client *http.Client, healthURL string, timeout time.Duration, stats *LoadTestStats) error {
+	startMessage := fmt.Sprintf("Waiting for service to be available at %s...", healthURL)
+	fmt.Println(startMessage)
+	stats.WriteProgressLine(startMessage)
 
 	start := time.Now()
 	client = &http.Client{Timeout: 1 * time.Second}
@@ -176,21 +306,32 @@ func waitForService(client *http.Client, healthURL string, timeout time.Duration
 
 		// Проверяем таймаут
 		if time.Since(start) > timeout {
-			return fmt.Errorf("service health check timeout after %v", timeout)
+			timeoutMessage := fmt.Sprintf("service health check timeout after %v", timeout)
+			stats.WriteProgressLine("❌ " + timeoutMessage)
+			return fmt.Errorf(timeoutMessage)
 		}
 
 		// Делаем запрос как в health checker
 		resp, err := client.Get(healthURL)
 		if err != nil {
-			fmt.Printf("Time: %ds - FAILED: %s\n", elapsed, err)
+			errorMessage := fmt.Sprintf("Time: %ds - FAILED: %s", elapsed, err)
+			fmt.Println(errorMessage)
+			stats.WriteProgressLine(errorMessage)
 		} else {
 			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("Time: %ds - OK (HTTP %d)\n", elapsed, resp.StatusCode)
+				successMessage := fmt.Sprintf("Time: %ds - OK (HTTP %d)", elapsed, resp.StatusCode)
+				fmt.Println(successMessage)
+				stats.WriteProgressLine(successMessage)
 				resp.Body.Close()
-				fmt.Println("✅ Service is now available and healthy!")
+
+				finalMessage := "✅ Service is now available and healthy!"
+				fmt.Println(finalMessage)
+				stats.WriteProgressLine(finalMessage)
 				return nil
 			} else {
-				fmt.Printf("Time: %ds - FAILED (HTTP %d)\n", elapsed, resp.StatusCode)
+				errorMessage := fmt.Sprintf("Time: %ds - FAILED (HTTP %d)", elapsed, resp.StatusCode)
+				fmt.Println(errorMessage)
+				stats.WriteProgressLine(errorMessage)
 			}
 			resp.Body.Close()
 		}
@@ -241,8 +382,15 @@ func runProgressReporter(stats *LoadTestStats, done <-chan bool, wg *sync.WaitGr
 	}
 }
 
-func runLoadTest(url string, healthURL string, requestsPerSecond int, duration time.Duration) *LoadTestStats {
-	stats := NewLoadTestStats()
+func runLoadTest(url string, healthURL string, requestsPerSecond int, duration time.Duration, progressFile, summaryFile string) *LoadTestStats {
+	stats := NewLoadTestStats(progressFile, summaryFile)
+	defer stats.CloseFiles()
+
+	// Записываем начало теста в файл прогресса
+	stats.WriteProgressLine("=== Load Test Started ===")
+	stats.WriteProgressLine(fmt.Sprintf("Target: %s", url))
+	stats.WriteProgressLine(fmt.Sprintf("Rate: %d requests per second", requestsPerSecond))
+	stats.WriteProgressLine(fmt.Sprintf("Duration: %v", duration))
 
 	// Создаем HTTP клиент с таймаутами
 	client := &http.Client{
@@ -257,7 +405,7 @@ func runLoadTest(url string, healthURL string, requestsPerSecond int, duration t
 	fmt.Println("Format: [Time] Req: total | OK: success | ERR: failed | P50: 50th percentile | P95: 95th percentile | P99: 99th percentile")
 
 	// Ждем пока сервис не станет доступен (таймаут 5 минут)
-	err := waitForService(client, healthURL, 5*time.Minute)
+	err := waitForService(client, healthURL, 5*time.Minute, stats)
 	if err != nil {
 		log.Fatalf("❌ Service health check failed: %v", err)
 	}
@@ -286,28 +434,99 @@ func runLoadTest(url string, healthURL string, requestsPerSecond int, duration t
 	close(done)
 	wg.Wait()
 
+	// Записываем завершение теста
+	stats.WriteProgressLine("=== Load Test Completed ===")
+
 	return stats
 }
 
-func main() {
-	// Конфигурация теста
-	config := struct {
-		URL                string
-		HealthURL          string
-		RequestsPerSecond  int
-		Duration           time.Duration
-	}{
-		URL:               "http://envoy:8090/api/crypto/encrypt",
-		HealthURL:         "http://envoy:8090/api/crypto/health",
-		RequestsPerSecond: 20,
-		Duration:          60 * 10 * time.Second, // 3 минуты тестирования
+// Вспомогательные функции для работы с переменными окружения
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
+}
+
+// Функция для создания пути к результатам на основе TEST_NUMBER_ENV и SERVICE
+func getResultsPath() string {
+	testNumber := getEnv("TEST_NUMBER_ENV", "1")
+	service := getEnv("SERVICE", "unknown-service")
+	basePath := getEnv("RESULTS_BASE_PATH", "/results")
+
+	// Создаем путь в формате: /results/test_{testNumber}/{service}/
+	return filepath.Join(basePath, fmt.Sprintf("test_%s", testNumber), service)
+}
+
+func main() {
+	// Получаем конфигурацию из переменных окружения
+	url := getEnv("TARGET_URL", "http://envoy:8090/api/crypto/encrypt")
+	healthURL := getEnv("HEALTH_URL", "http://envoy:8090/api/crypto/health")
+	requestsPerSecond := getEnvInt("REQUESTS_PER_SECOND", 20)
+	duration := getEnvDuration("TEST_DURATION", 10*time.Minute)
+
+	// Получаем параметры для пути
+	testNumber := getEnv("TEST_NUMBER_ENV", "1")
+	service := getEnv("SERVICE", "unknown-service")
+	resultsPath := getResultsPath()
+
+	// Файлы для вывода
+	progressFile := filepath.Join(resultsPath, "load_test_progress.log")
+	summaryFile := filepath.Join(resultsPath, "load_test_summary.json")
+	jsonFile := filepath.Join(resultsPath, "load_test_results.json")
 
 	fmt.Println("Encrypt Load Tester started")
+	fmt.Printf("Configuration:\n")
+	fmt.Printf("  URL: %s\n", url)
+	fmt.Printf("  Health URL: %s\n", healthURL)
+	fmt.Printf("  RPS: %d\n", requestsPerSecond)
+	fmt.Printf("  Duration: %v\n", duration)
+	fmt.Printf("  Test Number: %s\n", testNumber)
+	fmt.Printf("  Service: %s\n", service)
+	fmt.Printf("  Results path: %s\n", resultsPath)
+	fmt.Printf("  Progress file: %s\n", progressFile)
+	fmt.Printf("  Summary file: %s\n", summaryFile)
+	fmt.Printf("  JSON file: %s\n", jsonFile)
 
 	// Запускаем нагрузочный тест
-	stats := runLoadTest(config.URL, config.HealthURL, config.RequestsPerSecond, config.Duration)
+	stats := runLoadTest(url, healthURL, requestsPerSecond, duration, progressFile, summaryFile)
 
-	// Выводим финальные результаты
+	// Выводим финальные результаты в консоль
 	stats.PrintSummary()
+
+	// Сохраняем итоговую статистику в JSON файл
+	err := stats.SaveSummaryToJSON(summaryFile, duration, requestsPerSecond, url, healthURL, service, testNumber)
+	if err != nil {
+		log.Printf("❌ Failed to save summary to JSON: %v", err)
+	} else {
+		fmt.Printf("✅ Summary saved to: %s\n", summaryFile)
+	}
+
+	// Сохраняем результаты в дополнительный JSON файл (дублирование для совместимости)
+	err = stats.SaveSummaryToJSON(jsonFile, duration, requestsPerSecond, url, healthURL, service, testNumber)
+	if err != nil {
+		log.Printf("❌ Failed to save results to JSON: %v", err)
+	} else {
+		fmt.Printf("✅ JSON results saved to: %s\n", jsonFile)
+	}
+
+	fmt.Printf("✅ Progress log saved to: %s\n", progressFile)
 }
