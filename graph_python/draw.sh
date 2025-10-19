@@ -1,0 +1,1 @@
+python first.py /Users/andrey/idea-project/t-konf/logs/envoy_access_2025-10-19_10-37-29_spring.json.log -o my_report.html
