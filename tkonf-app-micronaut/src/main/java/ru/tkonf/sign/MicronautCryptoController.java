@@ -55,8 +55,6 @@ public class MicronautCryptoController {
     @Post("/encrypt")
     public HttpResponse<?> encryptMessage(@Body SignatureRequest request) {
         try {
-            System.out.println("Received encrypt request: " + request.getMessage());
-
             String encrypted = signatureService.encrypt(request.getMessage());
             return HttpResponse.ok(new CryptoResponse(encrypted));
         } catch (Exception e) {
