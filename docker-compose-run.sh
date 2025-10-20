@@ -21,20 +21,20 @@ echo "Для остановки нажмите Ctrl+C"
 # Quarkus
 echo "$(date): Запуск Quarkus конфигурации..."
 docker-compose --env-file quarkus.env --env-file .env up --build -d
-sleep 11m
+sleep 25m
 echo "$(date): Остановка Quarkus конфигурации..."
 docker compose --env-file quarkus.env --env-file .env down
 
 # Micronaut
 echo "$(date): Запуск Micronaut конфигурации..."
 docker compose --env-file micronaut.env --env-file .env up --build -d
-sleep 11m
+sleep 25m
 echo "$(date): Остановка Micronaut конфигурации..."
 docker compose --env-file micronaut.env --env-file .env down
 
 # Spring
 echo "$(date): Запуск Spring конфигурации..."
 docker compose --env-file spring.env --env-file .env up --build -d
-sleep 11m
+sleep 25m
 echo "$(date): Остановка Spring конфигурации..."
 docker compose --env-file spring.env --env-file .env down

@@ -13,10 +13,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.6'    # Максимум 0.5 CPU
+          cpus: '0.1'    # Максимум 0.5 CPU
           memory: 512M
         reservations:
-          cpus: '0.6'    # Минимум 0.1 CPU
+          cpus: '0.1'    # Минимум 0.1 CPU
           memory: 512M
     ports:
       - "8080:8080"  # ← Приложение на порту 8080

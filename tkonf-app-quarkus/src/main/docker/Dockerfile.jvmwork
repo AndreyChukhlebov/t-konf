@@ -1,14 +1,11 @@
 # Используем multi-arch образ
-FROM eclipse-temurin:21-jre-jammy
+FROM registry.access.redhat.com/ubi9/openjdk-21:1.23
 
 # Или альтернативы:
 # FROM eclipse-temurin:17-jre
 # FROM openjdk:17-jre-slim
 # FROM amazoncorretto:17-alpine-jdk
 
-# Создаем пользователя
-RUN groupadd -r -g 185 app && \
-    useradd -r -u 185 -g app app
 
 WORKDIR /deployments
 

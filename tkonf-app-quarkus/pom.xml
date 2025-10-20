@@ -70,7 +70,7 @@
                                 <image>
                                     <name>${docker.image.name}:${docker.image.version}</name>
                                     <build>
-                                        <cleanup>true</cleanup> <!-- Важно! -->
+                                        <cleanup>true</cleanup>
                                         <nocache>false</nocache>
                                         <dockerFile>Dockerfile.jvmwork</dockerFile>
                                         <contextDir>${project.basedir}/src/main/docker</contextDir>
@@ -82,6 +82,10 @@
                                             <tag>latest</tag>
                                             <tag>${project.version}</tag>
                                         </tags>
+                                        <!-- Добавьте эту секцию для multi-arch -->
+                                        <args>
+                                            <PLATFORM>linux/arm64</PLATFORM>
+                                        </args>
                                     </build>
                                     <run>
                                         <ports>
@@ -95,6 +99,8 @@
                                             </http>
                                             <time>30000</time>
                                         </wait>
+                                        <!-- Укажите платформу для запуска -->
+                                        <platform>linux/arm64</platform>
                                     </run>
                                 </image>
                             </images>
